@@ -1,38 +1,16 @@
-type PaletteBrick = {
-  name: string;
-  description: string;
-  studs: string;
-  color: string;
-};
+"use client";
 
-const palette: PaletteBrick[] = [
-  {
-    name: "Brick 2 x 2",
-    description: "Great for sturdy cores and columns.",
-    studs: "2 x 2",
-    color: "#f97316",
-  },
-  {
-    name: "Brick 2 x 4",
-    description: "The classic brick for most builds.",
-    studs: "2 x 4",
-    color: "#38bdf8",
-  },
-  {
-    name: "Brick 4 x 1",
-    description: "Useful for edges and trim.",
-    studs: "1 x 4",
-    color: "#a855f7",
-  },
-  {
-    name: "Plate 4 x 4",
-    description: "Thin plate ideal for floors.",
-    studs: "4 x 4",
-    color: "#22d3ee",
-  },
-];
+import { useBuilderStore } from "@/lib/store";
 
 export default function BrickPalette() {
+  const palette = useBuilderStore((state) => state.palette);
+  const activeBrickTypeId = useBuilderStore(
+    (state) => state.activeBrickTypeId,
+  );
+  const setActiveBrickType = useBuilderStore(
+    (state) => state.setActiveBrickType,
+  );
+
   return (
     <section className="flex h-full flex-col rounded-3xl border border-white/10 bg-slate-900/60 p-4 backdrop-blur">
       <div className="mb-4 flex items-center justify-between">
@@ -42,28 +20,48 @@ export default function BrickPalette() {
         </span>
       </div>
       <ul className="space-y-3">
-        {palette.map((brick) => (
-          <li
-            key={brick.name}
-            className="rounded-2xl border border-white/10 bg-white/5 p-3 transition hover:border-emerald-300/40"
-          >
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-white">{brick.name}</p>
-                <p className="text-xs text-slate-400">{brick.description}</p>
+        {palette.map((brick) => {
+          const isActive = brick.id === activeBrickTypeId;
+          return (
+            <li
+              key={brick.id}
+              className={`cursor-pointer rounded-2xl border p-3 transition hover:border-emerald-300/40 ${
+                isActive
+                  ? "border-emerald-300/60 bg-emerald-400/5"
+                  : "border-white/10 bg-white/5"
+              }`}
+              onClick={() => setActiveBrickType(brick.id)}
+              role="button"
+              aria-pressed={isActive}
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setActiveBrickType(brick.id);
+                }
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {brick.name}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    {brick.description}
+                  </p>
+                </div>
+                <span
+                  className="h-8 w-8 rounded-lg border border-white/20"
+                  style={{ backgroundColor: brick.color }}
+                />
               </div>
-              <span
-                className="h-8 w-8 rounded-lg border border-white/20"
-                style={{ backgroundColor: brick.color }}
-              />
-            </div>
-            <p className="mt-2 text-xs uppercase tracking-wide text-slate-400">
-              Studs: {brick.studs}
-            </p>
-          </li>
-        ))}
+              <p className="mt-2 text-xs uppercase tracking-wide text-slate-400">
+                Studs: {brick.studs}
+              </p>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
 }
-

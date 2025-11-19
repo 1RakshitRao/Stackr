@@ -1,21 +1,92 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useCallback, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Grid, OrbitControls } from "@react-three/drei";
+import { Grid, OrbitControls, Edges } from "@react-three/drei";
+import type { ThreeEvent } from "@react-three/fiber";
+import { useBuilderStore, type BrickInstance } from "@/lib/store";
+import type { BrickDefinition } from "@/lib/bricks";
 
 const cameraPosition: [number, number, number] = [10, 9, 10];
 
-function DemoBrick() {
+type BrickMeshProps = {
+  brick: BrickInstance;
+  definition?: BrickDefinition;
+  isSelected: boolean;
+  onSelect: (id: string | null) => void;
+};
+
+function BrickMesh({ brick, definition, isSelected, onSelect }: BrickMeshProps) {
+  if (!definition) return null;
+
   return (
-    <mesh position={[0, 0.75, 0]} castShadow receiveShadow>
-      <boxGeometry args={[2, 1.5, 2]} />
-      <meshStandardMaterial color="#f97316" roughness={0.45} metalness={0.1} />
+    <mesh
+      key={brick.id}
+      castShadow
+      receiveShadow
+      position={brick.position}
+      rotation={brick.rotation}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onSelect(brick.id);
+      }}
+    >
+      <boxGeometry args={definition.size} />
+      <meshStandardMaterial
+        color={definition.color}
+        roughness={0.4}
+        metalness={0.08}
+        emissive={isSelected ? "#22c55e" : "#000000"}
+        emissiveIntensity={isSelected ? 0.3 : 0}
+      />
+      {isSelected && <Edges color="#bbf7d0" />}
+    </mesh>
+  );
+}
+
+type PlacementPlaneProps = {
+  onPlace: (point: [number, number, number]) => void;
+};
+
+function PlacementPlane({ onPlace }: PlacementPlaneProps) {
+  const handlePointerDown = useCallback(
+    (event: ThreeEvent<PointerEvent>) => {
+      if (event.nativeEvent.button !== 0) return;
+      event.stopPropagation();
+      const { point } = event;
+      onPlace([point.x, point.y, point.z]);
+    },
+    [onPlace],
+  );
+
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, 0, 0]}
+      onPointerDown={handlePointerDown}
+    >
+      <planeGeometry args={[80, 80, 1, 1]} />
+      <meshStandardMaterial transparent opacity={0} />
     </mesh>
   );
 }
 
 function Scene() {
+  const bricks = useBuilderStore((state) => state.bricks);
+  const palette = useBuilderStore((state) => state.palette);
+  const selectedBrickId = useBuilderStore((state) => state.selectedBrickId);
+  const selectBrick = useBuilderStore((state) => state.selectBrick);
+  const placeBrickAt = useBuilderStore((state) => state.placeBrickAt);
+
+  const paletteMap = useMemo(
+    () =>
+      palette.reduce<Record<string, BrickDefinition>>((acc, brick) => {
+        acc[brick.id] = brick;
+        return acc;
+      }, {}),
+    [palette],
+  );
+
   return (
     <>
       <color attach="background" args={["#020617"]} />
@@ -44,7 +115,16 @@ function Scene() {
           fadeStrength={2}
           position={[0, 0, 0]}
         />
-        <DemoBrick />
+        <PlacementPlane onPlace={placeBrickAt} />
+        {bricks.map((brick) => (
+          <BrickMesh
+            key={brick.id}
+            brick={brick}
+            definition={paletteMap[brick.typeId]}
+            isSelected={brick.id === selectedBrickId}
+            onSelect={selectBrick}
+          />
+        ))}
       </Suspense>
       <OrbitControls
         makeDefault
@@ -61,10 +141,13 @@ function Scene() {
 }
 
 export default function Canvas3D() {
+  const selectBrick = useBuilderStore((state) => state.selectBrick);
+
   return (
     <div className="relative flex h-full w-full min-h-[420px] flex-1 overflow-hidden rounded-2xl bg-slate-900">
       <Canvas
         shadows
+        onPointerMissed={() => selectBrick(null)}
         camera={{
           position: cameraPosition,
           fov: 45,
