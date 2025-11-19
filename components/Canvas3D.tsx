@@ -1,11 +1,13 @@
 "use client";
 
-import { Suspense, useCallback, useMemo } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Suspense, useCallback, useMemo, useEffect } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
 import { Grid, OrbitControls, Edges } from "@react-three/drei";
 import type { ThreeEvent } from "@react-three/fiber";
 import { useBuilderStore, type BrickInstance } from "@/lib/store";
 import type { BrickDefinition } from "@/lib/bricks";
+import { snapToGrid as doSnap } from "@/lib/bricks";
+import * as THREE from "three";
 
 const cameraPosition: [number, number, number] = [10, 9, 10];
 
@@ -21,7 +23,6 @@ function BrickMesh({ brick, definition, isSelected, onSelect }: BrickMeshProps) 
 
   return (
     <mesh
-      key={brick.id}
       castShadow
       receiveShadow
       position={brick.position}
@@ -33,7 +34,7 @@ function BrickMesh({ brick, definition, isSelected, onSelect }: BrickMeshProps) 
     >
       <boxGeometry args={definition.size} />
       <meshStandardMaterial
-        color={definition.color}
+        color={brick.color ?? definition.color}
         roughness={0.4}
         metalness={0.08}
         emissive={isSelected ? "#22c55e" : "#000000"}
@@ -45,18 +46,18 @@ function BrickMesh({ brick, definition, isSelected, onSelect }: BrickMeshProps) 
 }
 
 type PlacementPlaneProps = {
-  onPlace: (point: [number, number, number]) => void;
+  onPointerDown: (point: [number, number, number]) => void;
 };
 
-function PlacementPlane({ onPlace }: PlacementPlaneProps) {
+function PlacementPlane({ onPointerDown }: PlacementPlaneProps) {
   const handlePointerDown = useCallback(
     (event: ThreeEvent<PointerEvent>) => {
       if (event.nativeEvent.button !== 0) return;
       event.stopPropagation();
       const { point } = event;
-      onPlace([point.x, point.y, point.z]);
+      onPointerDown([point.x, point.y, point.z]);
     },
-    [onPlace],
+    [onPointerDown],
   );
 
   return (
@@ -71,12 +72,44 @@ function PlacementPlane({ onPlace }: PlacementPlaneProps) {
   );
 }
 
+function CameraController() {
+  const { camera, controls } = useThree();
+  const cameraView = useBuilderStore((state) => state.cameraView);
+  
+  useEffect(() => {
+    const orbitControls = controls as unknown as {
+      reset: () => void;
+      object: THREE.Camera;
+      target: THREE.Vector3;
+      update: () => void;
+    };
+
+    if (!orbitControls) return;
+
+    switch (cameraView) {
+      case "top":
+        camera.position.set(0, 20, 0);
+        camera.lookAt(0, 0, 0);
+        break;
+      case "iso":
+        camera.position.set(10, 9, 10);
+        camera.lookAt(0, 0, 0);
+        break;
+    }
+    orbitControls.target.set(0, 0, 0);
+    orbitControls.update();
+  }, [cameraView, camera, controls]);
+
+  return null;
+}
+
 function Scene() {
   const bricks = useBuilderStore((state) => state.bricks);
   const palette = useBuilderStore((state) => state.palette);
   const selectedBrickId = useBuilderStore((state) => state.selectedBrickId);
   const selectBrick = useBuilderStore((state) => state.selectBrick);
   const placeBrickAt = useBuilderStore((state) => state.placeBrickAt);
+  const updateBrickPosition = useBuilderStore((state) => state.updateBrickPosition);
 
   const paletteMap = useMemo(
     () =>
@@ -86,6 +119,36 @@ function Scene() {
       }, {}),
     [palette],
   );
+
+  const handlePlaneClick = (point: [number, number, number]) => {
+    // Logic:
+    // If a brick is selected -> Move it to this position (snap).
+    // If no brick is selected -> Place a new brick.
+    
+    if (selectedBrickId) {
+       // Move Logic
+       // We need to find the selected brick to know its Y (height).
+       // But simpler: just keep current Y or reset based on definition? 
+       // Let's assume we move it on the floor for now or keep Y if stacked.
+       // Actually, better to look up the brick.
+       const brick = bricks.find(b => b.id === selectedBrickId);
+       if (brick) {
+          const definition = paletteMap[brick.typeId];
+          const snappedX = doSnap(point[0]);
+          const snappedZ = doSnap(point[2]);
+          // Keep existing Y or reset to floor height?
+          // User asked to "move the block". Usually implies dragging on the floor plane.
+          // Let's reset to floor height based on definition for consistent placement.
+          // If we want to support stacking, we need more complex raycasting logic (which we had implicitly with placement).
+          const y = definition ? definition.size[1] / 2 : brick.position[1]; 
+          
+          updateBrickPosition(brick.id, [snappedX, y, snappedZ]);
+       }
+    } else {
+       // Place Logic
+       placeBrickAt(point);
+    }
+  };
 
   return (
     <>
@@ -103,6 +166,7 @@ function Scene() {
         shadow-mapSize-width={1024}
       />
       <Suspense fallback={null}>
+        <CameraController />
         <Grid
           args={[40, 40]}
           sectionSize={4}
@@ -115,7 +179,7 @@ function Scene() {
           fadeStrength={2}
           position={[0, 0, 0]}
         />
-        <PlacementPlane onPlace={placeBrickAt} />
+        <PlacementPlane onPointerDown={handlePlaneClick} />
         {bricks.map((brick) => (
           <BrickMesh
             key={brick.id}
@@ -142,12 +206,15 @@ function Scene() {
 
 export default function Canvas3D() {
   const selectBrick = useBuilderStore((state) => state.selectBrick);
+  const selectedBrickId = useBuilderStore((state) => state.selectedBrickId);
 
   return (
     <div className="relative flex h-full w-full min-h-[420px] flex-1 overflow-hidden rounded-2xl bg-slate-900">
       <Canvas
         shadows
-        onPointerMissed={() => selectBrick(null)}
+        onPointerMissed={(e) => {
+           if (e.type === 'click') selectBrick(null);
+        }}
         camera={{
           position: cameraPosition,
           fov: 45,
@@ -158,9 +225,11 @@ export default function Canvas3D() {
         <Scene />
       </Canvas>
       <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-black/40 px-3 py-1 text-xs uppercase tracking-wide text-slate-200">
-        Orbit • Pan • Zoom
+        {selectedBrickId 
+          ? "Click grid to Move Selected • Click empty to Deselect"
+          : "Click grid to Place New • Click brick to Select"
+        }
       </div>
     </div>
   );
 }
-

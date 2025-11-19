@@ -6,12 +6,27 @@ import { useBuilderStore } from "@/lib/store";
 const formatVector = (vector: [number, number, number]) =>
   vector.map((value) => value.toFixed(2)).join(", ");
 
+const COLORS = [
+  "#f97316", // orange
+  "#38bdf8", // sky
+  "#a855f7", // purple
+  "#22d3ee", // cyan
+  "#ef4444", // red
+  "#10b981", // emerald
+  "#eab308", // yellow
+  "#f472b6", // pink
+  "#94a3b8", // slate
+];
+
 export default function PropertiesPanel() {
   const bricks = useBuilderStore((state) => state.bricks);
   const palette = useBuilderStore((state) => state.palette);
   const selectedBrickId = useBuilderStore((state) => state.selectedBrickId);
   const deleteSelectedBrick = useBuilderStore(
     (state) => state.deleteSelectedBrick,
+  );
+  const updateSelectedBrickColor = useBuilderStore(
+    (state) => state.updateSelectedBrickColor,
   );
 
   const selectedBrick = useMemo(
@@ -47,14 +62,29 @@ export default function PropertiesPanel() {
             {selectedBrick ? formatVector(selectedBrick.position) : "—"}
           </dd>
         </div>
-        <div className="rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
-          <dt className="text-xs uppercase tracking-widest text-slate-400">
-            Rotation
-          </dt>
-          <dd className="text-lg font-semibold text-white">
-            {selectedBrick ? formatVector(selectedBrick.rotation) : "—"}
-          </dd>
-        </div>
+        {selectedBrick && (
+          <div className="rounded-2xl border border-white/5 bg-white/5 px-4 py-3">
+            <dt className="text-xs uppercase tracking-widest text-slate-400">
+              Color
+            </dt>
+            <dd className="mt-2 flex flex-wrap gap-2">
+              {COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`h-6 w-6 rounded-full border transition ${
+                    (selectedBrick.color ?? selectedDefinition?.color) === color
+                      ? "scale-110 border-white"
+                      : "border-white/20 hover:scale-110 hover:border-white/60"
+                  }`}
+                  style={{ backgroundColor: color }}
+                  onClick={() => updateSelectedBrickColor(color)}
+                  aria-label={`Set color to ${color}`}
+                />
+              ))}
+            </dd>
+          </div>
+        )}
       </dl>
       <button
         type="button"
